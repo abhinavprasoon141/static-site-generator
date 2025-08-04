@@ -1,7 +1,7 @@
 import unittest
 
 from enum import Enum
-from textnode import TextNode, TextType, text_node_to_html_node
+from textnode import TextNode, TextType, text_node_to_html_node, split_nodes_delimiter
 from htmlnode import HTMLNode, ParentNode, LeafNode
 
 class TestTextNode(unittest.TestCase):
@@ -67,6 +67,89 @@ class TestTextNodeToHTMLNode(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Unknown TextType: UnknownTextType.UNKNOWN"):
             text_node_to_html_node(text_node)
+
+class TestInlineMarkdown(unittest.TestCase):
+    def test_split_delimiter_single_match(self):
+        node = TextNode("This is text with a `code block` word", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "`", TextType.CODE)
+        self.assertEqual(len(new_nodes), 3)
+        self.assertEqual(new_nodes[0], TextNode("This is text with a ", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("code block", TextType.CODE))
+        self.assertEqual(new_nodes[2], TextNode(" word", TextType.TEXT))
+
+    def test_split_delimiter_multiple_matches(self):
+        node = TextNode("This is text with a `code` and another `code`", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "`", TextType.CODE)
+        self.assertEqual(len(new_nodes), 5)
+        self.assertEqual(new_nodes[0], TextNode("This is text with a ", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("code", TextType.CODE))
+        self.assertEqual(new_nodes[2], TextNode(" and another ", TextType.TEXT))
+        self.assertEqual(new_nodes[3], TextNode("code", TextType.CODE))
+        self.assertEqual(new_nodes[4], TextNode("", TextType.TEXT)) # empty string after last delimiter
+
+    def test_split_delimiter_multiple_matches_no_trailing(self):
+        node = TextNode("`code` and `more code`", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "`", TextType.CODE)
+
+                # --- FIX: Change the assertion from 4 to 5 ---
+        self.assertEqual(len(new_nodes), 5)
+
+        self.assertEqual(new_nodes[0], TextNode("", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("code", TextType.CODE))
+        self.assertEqual(new_nodes[2], TextNode(" and ", TextType.TEXT))
+        self.assertEqual(new_nodes[3], TextNode("more code", TextType.CODE))
+        self.assertEqual(new_nodes[4], TextNode("", TextType.TEXT))
+
+
+    def test_split_delimiter_no_match(self):
+        node = TextNode("This is just plain text.", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "`", TextType.CODE)
+        self.assertEqual(len(new_nodes), 1)
+        self.assertEqual(new_nodes[0], node)
+
+    def test_split_delimiter_bold(self):
+        node = TextNode("This is text with a **bold** word.", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "**", TextType.BOLD)
+        self.assertEqual(len(new_nodes), 3)
+        self.assertEqual(new_nodes[0], TextNode("This is text with a ", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("bold", TextType.BOLD))
+        self.assertEqual(new_nodes[2], TextNode(" word.", TextType.TEXT))
+
+    def test_split_delimiter_italic(self):
+        node = TextNode("This is text with an _italic_ word.", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "_", TextType.ITALIC)
+        self.assertEqual(len(new_nodes), 3)
+        self.assertEqual(new_nodes[0], TextNode("This is text with an ", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("italic", TextType.ITALIC))
+        self.assertEqual(new_nodes[2], TextNode(" word.", TextType.TEXT))
+
+    def test_split_delimiter_mixed_list(self):
+        node1 = TextNode("Plain text here.", TextType.TEXT)
+        node2 = TextNode("This is text with a `code` section.", TextType.TEXT)
+        node3 = TextNode("This node should not be changed.", TextType.BOLD)
+
+        old_nodes = [node1, node2, node3]
+        new_nodes = split_nodes_delimiter(old_nodes, "`", TextType.CODE)
+
+        self.assertEqual(len(new_nodes), 5)
+        self.assertEqual(new_nodes[0], node1)
+        self.assertEqual(new_nodes[1], TextNode("This is text with a ", TextType.TEXT))
+        self.assertEqual(new_nodes[2], TextNode("code", TextType.CODE))
+        self.assertEqual(new_nodes[3], TextNode(" section.", TextType.TEXT))
+        self.assertEqual(new_nodes[4], node3)
+
+    def test_split_delimiter_unmatched_delimiter(self):
+        node = TextNode("This is text with a `code block", TextType.TEXT)
+        with self.assertRaisesRegex(ValueError, "unmatched delimiter"):
+            split_nodes_delimiter([node], "`", TextType.CODE)
+
+    def test_split_delimiter_delimiter_at_start_and_end(self):
+        node = TextNode("`Code block at start and end`", TextType.TEXT)
+        new_nodes = split_nodes_delimiter([node], "`", TextType.CODE)
+        self.assertEqual(len(new_nodes), 3)
+        self.assertEqual(new_nodes[0], TextNode("", TextType.TEXT))
+        self.assertEqual(new_nodes[1], TextNode("Code block at start and end", TextType.CODE))
+        self.assertEqual(new_nodes[2], TextNode("", TextType.TEXT))
 
 
 if __name__ == "__main__":
